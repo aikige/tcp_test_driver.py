@@ -13,14 +13,17 @@ Following code can be used to demonstrate HTTP GET operation.
 ```python
 from test_driver import TestTarget
 
-# Create test target for local HTTP host.
-target = TestTarget(hostname='localhost', port=8080) 
+# Create test target for HTTP connection.
+connector = TargetConnectorTCP('www.google.com', port=80)
+target = TestTarget(connector=connector) 
 
 # The 'start()' method initiates client connection and
 # starts receiver thread that dumps received string via a Logger.
 if target.start():
     # Send HTTP request.
-    target.send(b'GET / HTTP/1.1\r\n\r\n')
-    target.sleep(2)
+    target.send_str('GET / HTTP/1.1\r\n\r\n')
+    # Wait until '</html>' is received.
+    target.wait_str('</html>', timeout=2)
+    # And close connection.
     target.close()
 ```
