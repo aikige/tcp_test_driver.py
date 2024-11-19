@@ -124,9 +124,10 @@ class TestTarget:
         self.active = False
         self.connector = connector
         self.connector.logger = logger
-        # Option for internal behaviors.
-        self.flush_before_wait = False  # When this attribute is True, force flush_rx before wait string(s).
-        self.split_lines = False        # When this attribute is True, split received data into lines.
+        # When flush_before_wait attribute is True, force flush_rx before wait string(s).
+        self.flush_before_wait = False  
+        # When split_lines attribute is True, split received data into lines.
+        self.split_lines = False        
 
     def start(self) -> bool:
         """ Start receiver thread. """
@@ -153,15 +154,13 @@ class TestTarget:
                 break
             self.log(data, f"RX:{self.name}")
             if self.split_lines:
-                for line in data.splitlines():
-                    self.rx_buffer.append(line)
+                lines = data.splitlines()
             else:
-                self.rx_buffer.append(data)
-            for string in self.wait_strings:
-                if string in data:
-                    self.found_str = data
-                    self.event.set()
-                    break
+                lines = [data]
+            for line in lines:
+                self.rx_buffer.append(line)
+            if self.__find_multi_str(self.wait_strings, lines):
+                self.event.set()
         self.log('receiver stopped', f"--:{self.name}")
 
     def send(self, message: bytes):
@@ -174,6 +173,15 @@ class TestTarget:
         self.log(message, f"TX:{self.name}")
         self.connector.send_str(message)
 
+    def __find_multi_str(self, strings: list, lines: list):
+        self.found_str = None
+        for line in lines:
+            for string in strings:
+                if string in line:
+                    self.found_str = line
+                    return True
+        return False
+
     def find_str(self, string: str, count: int = 1) -> int:
         self.found_str = None
         for line in self.rx_buffer:
@@ -184,13 +192,8 @@ class TestTarget:
                     break
         return count
 
-    def find_multi_str(self, strings: list) -> bool:
-        for line in self.rx_buffer:
-            for string in strings:
-                if string in line:
-                    self.found_str = line
-                    return True
-        return False
+    def find_multi_str(self, strings: list, lines: list = None) -> bool:
+        return self.__find_multi_str(list, self.rx_buffer)
 
     def wait_str(self, string: str, count: int = 1, timeout=None) -> bool:
         if self.flush_before_wait:
@@ -210,7 +213,7 @@ class TestTarget:
     def wait_multi_str(self, strings: list, timeout=None) -> bool:
         if self.flush_before_wait:
             self.flush_rx()
-        elif self.find_multi_str(strings):
+        elif self.__find_multi_str(strings, self.rx_buffer):
             return True
         self.event.clear()
         self.wait_strings = strings
@@ -249,7 +252,6 @@ if __name__ == '__main__':
         target.send_str('GET /search HTTP/1.1\r\n\r\n')
         if target.wait_multi_str(['</html>', '</HTML>'], timeout=2):
             target.log('=== Success (2) ===')
-            target.find_multi_str(['</html>', '</HTML>'])
             target.log('--- Found:' + target.found_str)
         else:
             target.log('=== Fail ===')
