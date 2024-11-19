@@ -9,7 +9,7 @@ import time
 
 class TestLogger:
     """ The default and minumum Logger for TestTarget. """
-    def write(self, message: str, info: str = ''):
+    def write(self, message: str, info: str):
         """ Write logging.
 
         Args:
@@ -29,6 +29,7 @@ class StandardLogger(TestLogger):
             filename = filename + datetime.datetime.now().strftime('_%Y%m%d%H%M%S')
         filename += '.log'
         self.file = open(filename, mode='w', encoding='utf-8')
+        self.lock = threading.Lock()
 
     def write(self, message, info: str = ''):
         """ Write log message to standard output and file. """
@@ -37,8 +38,9 @@ class StandardLogger(TestLogger):
         elif message[-1] not in '\r\n':
             message += '\n'
         message = f"{str(time.time_ns())}:{info}:{message}"
-        print(message, end='')
-        self.file.write(message)
+        with self.lock:
+            print(message, end='')
+            self.file.write(message)
 
     def close(self):
         if self.file is not None:
@@ -111,15 +113,21 @@ class TargetConnectorTCP(TargetConnector):
         self.socket.close()
 
 class TestTarget:
+    class Logger:
+        def __init__(self, name, logger):
+            self.logger = logger
+            self.name = name
+        def write(self, message: str, info: str):
+            info += ':' + self.name
+            self.logger.write(message, info)
+
     def __init__(self, name='', connector=TargetConnectorTCP(), logger=TestLogger()):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.logger = self.Logger(name, logger)
         self.rx_buffer = []
         self.wait_strings = []
-        self.name = name
-        self.event = threading.Event()
-        self.lock = threading.Lock()
+        self.semaphore = threading.Semaphore(0)
         self.thread = threading.Thread(target=self.receiver, daemon=True)
-        self.logger = logger
         self.found_str = None
         self.active = False
         self.connector = connector
@@ -131,9 +139,9 @@ class TestTarget:
 
     def start(self) -> bool:
         """ Start receiver thread. """
-        self.log('start receiver', f"--:{self.name}")
+        self.log('start receiver', '--')
         if not self.connector.open():
-            self.log('failed to connect', f"ER:{self.name}")
+            self.log('failed to connect', 'ER')
             return False
         self.active = True
         self.thread.start()
@@ -141,36 +149,37 @@ class TestTarget:
 
     def log(self, message: str, info: str = ''):
         """ Write message to logger. """
-        self.lock.acquire()
         self.logger.write(message, info)
-        self.lock.release()
 
     def receiver(self):
         while self.active:
             data = self.connector.recv_str()
             if data is None:
                 if self.active:
-                    self.log('failed to receive', f"ER:{self.name}")
+                    self.log('failed to receive', 'ER')
                 break
-            self.log(data, f"RX:{self.name}")
             if self.split_lines:
                 lines = data.splitlines()
             else:
                 lines = [data]
             for line in lines:
+                self.log(line, 'RX')
                 self.rx_buffer.append(line)
-            if self.__find_multi_str(self.wait_strings, lines):
-                self.event.set()
-        self.log('receiver stopped', f"--:{self.name}")
+                for string in self.wait_strings:
+                    if string in line:
+                        self.found_str = line
+                        self.semaphore.release()
+                        break
+        self.log('receiver stopped', '--')
 
     def send(self, message: bytes):
         """ Send byte-stream to socket (with log). """
-        self.log(message.decode(), f"TX:{self.name}")
+        self.log(message.decode(), 'TX')
         self.connector.send(message)
 
     def send_str(self, message: str):
         """ Send string to socket (with log). """
-        self.log(message, f"TX:{self.name}")
+        self.log(message, 'TX')
         self.connector.send_str(message)
 
     def __find_multi_str(self, strings: list, lines: list):
@@ -195,14 +204,19 @@ class TestTarget:
     def find_multi_str(self, strings: list, lines: list = None) -> bool:
         return self.__find_multi_str(list, self.rx_buffer)
 
+    def __flush_semaphore(self):
+        while self.semaphore.acquire(blocking=False):
+            self.log('discard event', 'WR')
+            pass
+
     def wait_str(self, string: str, count: int = 1, timeout=None) -> bool:
         if self.flush_before_wait:
             self.flush_rx()
         count = self.find_str(string, count)
-        self.event.clear()
+        self.__flush_semaphore()    # for safe.
         self.wait_strings.append(string)
         while count > 0 and self.active:
-            result = self.event.wait(timeout)
+            result = self.semaphore.acquire(timeout=timeout)
             if not result:
                 result = False
                 break
@@ -215,9 +229,9 @@ class TestTarget:
             self.flush_rx()
         elif self.__find_multi_str(strings, self.rx_buffer):
             return True
-        self.event.clear()
+        self.__flush_semaphore()    # for safe.
         self.wait_strings = strings
-        result = self.event.wait(timeout)
+        result = self.semaphore.acquire(timeout=timeout)
         self.wait_strings = []
         return result
 
@@ -229,9 +243,8 @@ class TestTarget:
         if self.active:
             self.active = False
             self.connector.close()
+            self.thread.join()
             self.rx_buffer = []
-            self.event.set()
-            #self.thread.join()
 
     def sleep(self, duration):
         time.sleep(duration)
