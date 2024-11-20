@@ -11,7 +11,7 @@ The `test_driver.py` will provide similar scripting utilities as Tera Term Macro
 
 Following code can be used to demonstrate HTTP GET operation.
 ```python
-from test_driver import TestTarget
+from test_driver import TestTarget, TargetConnectorTCP
 
 # Create test target for HTTP connection.
 connector = TargetConnectorTCP('www.google.com', port=80)
@@ -24,6 +24,19 @@ if target.start():
     target.send_str('GET / HTTP/1.1\r\n\r\n')
     # Wait until '</html>' is received.
     target.wait_str('</html>', timeout=2)
-    # And close connection.
-    target.close()
+    # And close connection and terminate receiver.
+    target.stop()
+```
+
+Same procedure can be written as following, in this style connection is established and closed implicitly.
+```python
+from test_driver import TestTarget, TargetConnectorTCP
+
+# Create test target for HTTP connection.
+connector = TargetConnectorTCP('www.google.com', port=80)
+with TestTarget(connector=connector) as target:
+    # Send HTTP request.
+    target.send_str('GET / HTTP/1.1\r\n\r\n')
+    # Wait until '</html>' is received.
+    target.wait_str('</html>', timeout=2)
 ```

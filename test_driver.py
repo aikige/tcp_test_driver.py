@@ -22,6 +22,17 @@ class TestLogger:
             message += '\n'
         print(message, end='')
 
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
+
+
 class StandardLogger(TestLogger):
     """ The Logger that stores logs into file with timestamp. """
     def __init__(self, filename: str = 'test', timestamp: bool = True):
@@ -47,9 +58,6 @@ class StandardLogger(TestLogger):
             self.file.close()
             self.file = None
 
-    def __del__(self):
-        self.close()
-
 class TargetConnector:
     """ Interface definition for TargetConnector. """
     def __init__(self, logger=None):
@@ -68,7 +76,7 @@ class TargetConnector:
     def close(self):
         pass
 
-class TargetConnectorTCP(TargetConnector):
+class TcpClientConnector(TargetConnector):
     RECV_UNIT = 4096
     def __init__(self, hostname='127.0.0.1', port=8080, logger=None):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -121,7 +129,7 @@ class TestTarget:
             info += ':' + self.name
             self.logger.write(message, info)
 
-    def __init__(self, name='', connector=TargetConnectorTCP(), logger=TestLogger()):
+    def __init__(self, name='', connector=TcpClientConnector(), logger=TestLogger()):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logger = self.Logger(name, logger)
         self.rx_buffer = []
@@ -137,9 +145,17 @@ class TestTarget:
         # When split_lines attribute is True, split received data into lines.
         self.split_lines = False        
 
+    def __enter__(self):
+        if not self.start():
+            raise RuntimeError('Failed to start TestTarget')
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+        return False
+
     def start(self) -> bool:
         """ Start receiver thread. """
-        self.log('start receiver', '--')
         if not self.connector.open():
             self.log('failed to connect', 'ER')
             return False
@@ -152,6 +168,7 @@ class TestTarget:
         self.logger.write(message, info)
 
     def receiver(self):
+        self.log('receiver started', '--')
         while self.active:
             data = self.connector.recv_str()
             if data is None:
@@ -162,6 +179,11 @@ class TestTarget:
                 lines = data.splitlines()
             else:
                 lines = [data]
+            if self.wait_strings is None:
+                # Waiting any
+                self.semaphore.release()
+                self.rx_buffer.extend(lines)
+                continue
             for line in lines:
                 self.log(line, 'RX')
                 self.rx_buffer.append(line)
@@ -209,6 +231,13 @@ class TestTarget:
             self.log('discard event', 'WR')
             pass
 
+    def wait_any(self, timeout=None):
+        self.__flush_semaphore()
+        self.wait_strings = None
+        result = self.semaphore.acquire(timeout=timeout)
+        self.wait_strings = []
+        return result
+
     def wait_str(self, string: str, count: int = 1, timeout=None) -> bool:
         if self.flush_before_wait:
             self.flush_rx()
@@ -250,10 +279,9 @@ class TestTarget:
         time.sleep(duration)
 
 if __name__ == '__main__':
-    l = StandardLogger()
-    c = TargetConnectorTCP(hostname='www.google.com', port=80)
-    target = TestTarget(connector=c, logger=l)
-    if target.start():
+    c = TcpClientConnector(hostname='www.google.com', port=80)
+    #c = TcpClientConnector(hostname='127.0.0.1', port=80)
+    with StandardLogger() as l, TestTarget(connector=c, logger=l) as target:
         target.send_str('GET / HTTP/1.1\r\n\r\n')
         if target.wait_str('</html>', timeout=2):
             target.sleep(0.1)
@@ -268,6 +296,3 @@ if __name__ == '__main__':
             target.log('--- Found:' + target.found_str)
         else:
             target.log('=== Fail ===')
-        target.stop()
-    else:
-        target.log('=== Connection Failed ===')
