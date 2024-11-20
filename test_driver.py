@@ -279,8 +279,12 @@ class TestTarget:
         time.sleep(duration)
 
 if __name__ == '__main__':
-    c = TcpClientConnector(hostname='www.google.com', port=80)
-    #c = TcpClientConnector(hostname='127.0.0.1', port=80)
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('-n', '--hostname', type=str, default='www.google.com')
+    parser.add_argument('-p', '--port', type=int, default=80)
+    args = parser.parse_args()
+    c = TcpClientConnector(hostname=args.hostname, port=args.port)
     with StandardLogger() as l, TestTarget(connector=c, logger=l) as target:
         target.send_str('GET / HTTP/1.1\r\n\r\n')
         if target.wait_str('</html>', timeout=2):
