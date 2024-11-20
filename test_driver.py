@@ -32,7 +32,6 @@ class TestLogger:
         self.close()
         return False
 
-
 class StandardLogger(TestLogger):
     """ The Logger that stores logs into file with timestamp. """
     def __init__(self, filename: str = 'test', timestamp: bool = True):
@@ -279,6 +278,9 @@ class TestTarget:
         time.sleep(duration)
 
 if __name__ == '__main__':
+    ############################################################################
+    # Demonstrate API with HTTP request
+    ############################################################################
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('-n', '--hostname', type=str, default='www.google.com')

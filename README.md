@@ -1,9 +1,10 @@
 # Simple TCP/IP Test Driver
 
-`test_driver.py` provides utility features to create test program that manipulates TCP/IP server programs.
+`test_driver.py` provides utility to create test program that manipulates TCP/IP server programs.
 
 [Tera Term]:https://teratermproject.github.io/
-In the case of Japan, [Tera Term] is widely used as environment for this purpose, but it can not be used for the test cases that needs to control multiple servers.
+In the case of Japan, [Tera Term] is widely used as environment for this purpose,
+but it can not be used for the test cases that needs to control multiple servers.
 
 The `test_driver.py` will provide similar scripting utilities as Tera Term Macro for multiple connection use cases.
 
@@ -28,7 +29,8 @@ if target.start():
     target.stop()
 ```
 
-Same procedure can be written as following, in this style connection is established and closed implicitly.
+Same procedure can be written as following, in this style,
+connection is established and closed automatically.
 ```python
 from test_driver import TestTarget, TargetConnectorTCP
 
