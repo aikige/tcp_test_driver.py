@@ -7,10 +7,14 @@ from test_driver import StandardLogger, TcpClientConnector, TestTarget
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
-parser.add_argument('-n', '--hostname', type=str, default='localhost')
-parser.add_argument('-p', '--port', type=int, default=8080)
-parser.add_argument('-c', '--crlf', action='store_true')
-parser.add_argument('-i', '--ignore-blank', action='store_true')
+h = 'hostname for TCP connection'
+parser.add_argument('-n', '--hostname', type=str, default='localhost', help=h)
+h = 'TCP port number for TCP connection'
+parser.add_argument('-p', '--port', type=int, default=8080, help=h)
+h = 'when this option is set, script uses CR+LF as new line, otherwise uses LF'
+parser.add_argument('-c', '--crlf', action='store_true', help=h)
+h = 'when this option is set, script ignores blank line'  
+parser.add_argument('-i', '--ignore-blank', action='store_true', help=h)
 args = parser.parse_args()
 
 if args.crlf:
