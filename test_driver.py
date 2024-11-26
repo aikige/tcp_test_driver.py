@@ -140,9 +140,9 @@ class TestTarget:
         self.connector = connector
         self.connector.logger = logger
         # When flush_before_wait attribute is True, force flush_rx before wait string(s).
-        self.flush_before_wait = False  
+        self.flush_before_wait = False
         # When split_lines attribute is True, split received data into lines.
-        self.split_lines = False        
+        self.split_lines = False
 
     def __enter__(self):
         if not self.start():
@@ -181,6 +181,7 @@ class TestTarget:
             if self.wait_strings is None:
                 # Waiting any
                 self.semaphore.release()
+                self.found_str = lines[0]
                 self.rx_buffer.extend(lines)
                 continue
             for line in lines:
@@ -231,6 +232,9 @@ class TestTarget:
             pass
 
     def wait_any(self, timeout=None):
+        if len(self.rx_buffer) > 0:
+            self.found_str = self.rx_buffer[0]
+            return True
         self.__flush_semaphore()
         self.wait_strings = None
         result = self.semaphore.acquire(timeout=timeout)
@@ -283,8 +287,10 @@ if __name__ == '__main__':
     ############################################################################
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument('-n', '--hostname', type=str, default='www.google.com')
-    parser.add_argument('-p', '--port', type=int, default=80)
+    H = 'hostname for TCP connection'
+    parser.add_argument('-n', '--hostname', type=str, default='www.google.com', help=H)
+    H = 'port number for TCP connection'
+    parser.add_argument('-p', '--port', type=int, default=80, help=H)
     args = parser.parse_args()
     c = TcpClientConnector(hostname=args.hostname, port=args.port)
     with StandardLogger() as l, TestTarget(connector=c, logger=l) as target:
